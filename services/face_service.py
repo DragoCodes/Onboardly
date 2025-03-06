@@ -56,7 +56,7 @@ class FaceService:
             similarity = (1.0 - face_distance) * 100
 
             # Convert numpy.bool_ to native Python bool
-            match = bool(similarity > 70)
+            match = bool(similarity > 50)
 
             return {
                 "similarity": round(float(similarity), 2),  # Convert to native Python float
