@@ -10,4 +10,4 @@ app.include_router(id_router.router, prefix="/api/id")
 
 @app.get("/")
 async def serve_ui():
-    return FileResponse("app/templates/index.html")
+    return 

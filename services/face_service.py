@@ -8,6 +8,7 @@ import io
 import cv2 
 import tempfile
 import os
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -70,51 +71,88 @@ class FaceService:
         """
         Capture an image from the webcam, extract the face, and compare it with the face from the ID card.
         """
-        if session_id not in sessions:
-            raise ValueError("Invalid session")
-        if "id" not in sessions[session_id]["data"] or "face" not in sessions[session_id]["data"]["id"]:
-            raise ValueError("ID not uploaded or face not detected in ID")
-
-        # Capture image from webcam
-        cap = cv2.VideoCapture(0)
-        if not cap.isOpened():
-            raise RuntimeError("Could not open webcam")
-        ret, frame = cap.read()
-        if not ret:
-            raise RuntimeError("Could not capture image from webcam")
-        cap.release()
-
-        # Create a directory to save webcam images
-        webcam_images_dir = Path("uploads/webcam_images")
-        webcam_images_dir.mkdir(parents=True, exist_ok=True)
-
-        # Save the captured image
-        webcam_image_path = webcam_images_dir / f"webcam_capture_{session_id}.jpg"
-        cv2.imwrite(str(webcam_image_path), frame)
-
         try:
-            # Extract face from webcam image
-            webcam_face_result = self.extract_face(str(webcam_image_path))
-            if not webcam_face_result or "face_encoding" not in webcam_face_result:
+            cap = cv2.VideoCapture(0)
+            if not cap.isOpened():
+                raise RuntimeError("Could not open webcam")
+
+            # Display instructions
+            print("Looking for face... Please look at the camera")
+
+            # Countdown
+            for i in range(3, 0, -1):
+                ret, frame = cap.read()
+                if not ret:
+                    raise RuntimeError("Could not capture frame")
+
+                # Display countdown
+                cv2.putText(
+                    frame,
+                    f"Taking photo in {i}...",
+                    (50, 50),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1,
+                    (0, 0, 255),
+                    2,
+                )
+                cv2.imshow("Webcam", frame)
+                cv2.waitKey(1000)  # Wait 1 second
+
+            # Capture final image
+            ret, frame = cap.read()
+            if not ret:
+                raise RuntimeError("Could not capture frame")
+
+            # Create directory for webcam images if it doesn't exist
+            webcam_dir = Path("uploads/webcam")
+            webcam_dir.mkdir(parents=True, exist_ok=True)
+
+            # Save image
+            timestamp = int(time.time())
+            image_path = webcam_dir / f"webcam_capture_{timestamp}.jpg"
+            cv2.imwrite(str(image_path), frame)
+
+            # Display captured image
+            cv2.putText(
+                frame,
+                "Photo captured!",
+                (50, 50),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (0, 255, 0),
+                2,
+            )
+            cv2.imshow("Webcam", frame)
+            cv2.waitKey(1000)
+
+            # Release webcam
+            cap.release()
+            cv2.destroyAllWindows()
+
+            # Extract face from captured image
+            webcam_face = self.extract_face(str(image_path))
+            if not webcam_face or "face_encoding" not in webcam_face:
                 raise ValueError("No face detected in webcam image")
 
             # Get face encoding from ID card
             id_face_result = sessions[session_id]["data"]["id"]["face"]
             if not id_face_result or "face_encoding" not in id_face_result:
                 raise ValueError("No face encoding found in ID card data")
-
-            # Compare faces
-            comparison_result = self.compare_faces(id_face_result["face_encoding"], webcam_face_result["face_encoding"])
+            
+            # Compare with reference face
+            comparison_result = self.compare_faces(
+                id_face_result["face_encoding"], webcam_face["face_encoding"]
+            )
 
             return {
                 "similarity": comparison_result.get("similarity"),
                 "match": comparison_result.get("match"),
-                "webcam_face_image": webcam_face_result.get("face_image"),
+                # "webcam_face_image": webcam_face_result.get("face_image"),
                 "id_face_image": id_face_result.get("face_image"),
-                "webcam_image_path": str(webcam_image_path)  # Return the path of the saved webcam image
+                # "webcam_image_path": str(webcam_image_path)  # Return the path of the saved webcam image
             }
         except Exception as e:
             # Cleanup on error
-            if webcam_image_path.exists():
-                os.remove(webcam_image_path)
+            # if webcam_image_path.exists():
+            #     os.remove(webcam_image_path)
             raise e

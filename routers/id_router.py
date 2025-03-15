@@ -1,6 +1,7 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Cookie
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Cookie, Response
 from services.ocr_service import OCRService
 from services.face_service import FaceService
+from services.gesture_service import GestureService
 from config import settings
 from pathlib import Path
 import fitz  # PyMuPDF
@@ -11,12 +12,16 @@ from typing import List
 import base64
 from PIL import Image
 import io
+import time
+import random
 
+# Import sessions from session_router
 from routers.session_router import sessions
 
 router = APIRouter()
 ocr = OCRService()
 face = FaceService()
+gesture_service = GestureService()
 
 def convert_pdf_to_images(pdf_path: Path) -> List[Path]:
     """Convert PDF to list of image paths"""
@@ -76,15 +81,20 @@ async def upload_id(
         ocr_result = ocr.extract_text(process_path)
         face_result = face.extract_face(process_path)
         
-        # Cleanup temporary images
-        for img in images:
-            if img.exists():
-                os.remove(img)
-        
+        if face_result and "error" in face_result:
+            raise HTTPException(status_code=400, detail=f"Face extraction failed: {face_result['error']}")
+
+        if not face_result or "face_encoding" not in face_result:
+            raise HTTPException(status_code=400, detail="No face detected in the uploaded ID")
+
+        # Initialize id dictionary if it doesn't exist
+        if "data" not in sessions[session_id]:
+            sessions[session_id]["data"] = {}
+            
         # Store results
         sessions[session_id]["data"]["id"] = {
             "ocr": ocr_result,
-            "face": face_result
+            "face": face_result  
         }
 
         if face_result and "face_image" in face_result:
@@ -109,7 +119,6 @@ async def upload_id(
             if img.exists():
                 os.remove(img)
         raise HTTPException(status_code=500, detail=str(e))
-    
 
 @router.post("/capture-and-compare")
 async def capture_and_compare(session_id: str = Cookie(None)):
@@ -126,3 +135,40 @@ async def capture_and_compare(session_id: str = Cookie(None)):
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+
+# Remove the start-gesture-session endpoint since we'll use the session_router's create-session instead
+
+@router.post("/verify-gesture")
+async def verify_gesture(session_id: str = Cookie(None)):
+    if not session_id or session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Invalid session")
+    
+    # Check if data dict exists
+    if "data" not in sessions[session_id]:
+        raise HTTPException(status_code=400, detail="No data found in session. Please complete ID upload first.")
+    
+    # Get the reference face encoding from the session data
+    if "id" not in sessions[session_id]["data"]:
+        raise HTTPException(status_code=400, detail="ID document not uploaded. Please upload ID before verifying gesture.")
+    
+    if "face" not in sessions[session_id]["data"]["id"]:
+        raise HTTPException(status_code=400, detail="No face data found in session. Please upload a valid ID with a face.")
+
+    reference_face_encoding = sessions[session_id]["data"]["id"]["face"].get("face_encoding")
+    if not reference_face_encoding:
+        raise HTTPException(status_code=400, detail="No face encoding found in session data. Please upload a valid ID with a recognizable face.")
+    
+    try:
+        # Pass the reference face encoding to verify_liveness
+        result = gesture_service.verify_liveness(reference_face_encoding)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/cleanup-gesture/{session_id}")
+async def cleanup_gesture_session(session_id: str):
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    del sessions[session_id]
+    return {"status": "cleaned"}
