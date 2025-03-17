@@ -10,40 +10,72 @@ import tempfile
 import os
 import time
 
+from utils.config_loader import load_config, get_project_root
+
+# Load configuration
+config = load_config("face_service")
 logger = logging.getLogger(__name__)
 
 class FaceService:
+    def __init__(self):
+        # Face processing configurations
+        face_config = config["face"]
+        self.similarity_threshold = face_config["similarity_threshold"]
+        self.detection_model = face_config["detection_model"]
+        self.encoding_model = face_config["encoding_model"]
+        self.image_config = face_config["image"]
+        
+        # Webcam configurations
+        self.webcam_config = face_config["webcam"]
+        
+        # Path configurations
+        self.path_config = config["paths"]
+
     def extract_face(self, image_path: str):
         try:
-            absolute_path = Path(image_path).absolute()
+            absolute_path = Path(image_path) if Path(image_path).is_absolute() \
+                else get_project_root() / image_path
             
             if not absolute_path.exists():
                 raise FileNotFoundError(f"Face image not found: {absolute_path}")
             
             image = face_recognition.load_image_file(absolute_path)
-            face_locations = face_recognition.face_locations(image)
+            face_locations = face_recognition.face_locations(
+                image, model=self.detection_model
+            )
             
             if not face_locations:
                 return None
                 
             top, right, bottom, left = face_locations[0]
-            
-            # Extract face image
             face_image = image[top:bottom, left:right]
             
-            # Convert to base64
+            # Process image with configurable format/quality
             pil_image = Image.fromarray(face_image)
             buffered = io.BytesIO()
-            pil_image.save(buffered, format="JPEG")
+            
+            if self.image_config["output_format"].upper() == "JPEG":
+                pil_image.save(
+                    buffered, 
+                    format=self.image_config["output_format"], 
+                    quality=self.image_config["jpeg_quality"]
+                )
+            else:
+                pil_image.save(buffered, format=self.image_config["output_format"])
+                
             img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
             
-            face_encoding = face_recognition.face_encodings(image, [face_locations[0]])[0]
+            face_encoding = face_recognition.face_encodings(
+                image, 
+                known_face_locations=[face_locations[0]],
+                model=self.encoding_model
+            )[0]
             
             return {
                 "face_encoding": face_encoding.tolist(),
                 "face_location": face_locations[0],
                 "face_image": img_str,
-                "mime_type": "image/jpeg"
+                "mime_type": f"image/{self.image_config['output_format'].lower()}"
             }
         except Exception as e:
             logger.error(f"Face processing error in {image_path}: {str(e)}")
@@ -56,12 +88,9 @@ class FaceService:
             face_distance = face_recognition.face_distance([known_array], unknown_array)[0]
             similarity = (1.0 - face_distance) * 100
 
-            # Convert numpy.bool_ to native Python bool
-            match = bool(similarity > 50)
-
             return {
-                "similarity": round(float(similarity), 2),  # Convert to native Python float
-                "match": match  # Convert to native Python bool
+                "similarity": round(float(similarity), 2),
+                "match": bool(similarity >= self.similarity_threshold)
             }
         except Exception as e:
             logger.error(f"Comparison Error: {str(e)}")
@@ -69,90 +98,98 @@ class FaceService:
         
     def capture_and_compare(self, session_id: str, sessions: dict):
         """
-        Capture an image from the webcam, extract the face, and compare it with the face from the ID card.
+        Enhanced webcam capture using configured parameters
         """
         try:
-            cap = cv2.VideoCapture(0)
+            cap = cv2.VideoCapture(self.webcam_config["camera_index"])
             if not cap.isOpened():
                 raise RuntimeError("Could not open webcam")
 
-            # Display instructions
-            print("Looking for face... Please look at the camera")
+            # Get webcam config parameters
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = self.webcam_config["font_scale"]
+            font_thickness = self.webcam_config["font_thickness"]
+            display_time = self.webcam_config["display_time_ms"]
 
-            # Countdown
-            for i in range(3, 0, -1):
+            # Capture countdown sequence
+            start_time = time.time()
+            while (time.time() - start_time) < self.webcam_config["countdown_seconds"]:
                 ret, frame = cap.read()
                 if not ret:
                     raise RuntimeError("Could not capture frame")
 
-                # Display countdown
+                # Dynamic countdown text
+                remaining = self.webcam_config["countdown_seconds"] - int(time.time() - start_time)
                 cv2.putText(
                     frame,
-                    f"Taking photo in {i}...",
+                    f"Capturing in {remaining}...",
                     (50, 50),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1,
+                    font,
+                    font_scale,
                     (0, 0, 255),
-                    2,
+                    font_thickness
                 )
                 cv2.imshow("Webcam", frame)
-                cv2.waitKey(1000)  # Wait 1 second
+                cv2.waitKey(display_time)
 
-            # Capture final image
+            # Final capture
             ret, frame = cap.read()
             if not ret:
-                raise RuntimeError("Could not capture frame")
+                raise RuntimeError("Could not capture final frame")
 
-            # Create directory for webcam images if it doesn't exist
-            webcam_dir = Path("uploads/webcam")
-            webcam_dir.mkdir(parents=True, exist_ok=True)
-
-            # Save image
+            # Save capture using configured path
+            capture_dir = get_project_root() / self.webcam_config["capture_dir"]
+            capture_dir.mkdir(parents=True, exist_ok=True)
             timestamp = int(time.time())
-            image_path = webcam_dir / f"webcam_capture_{timestamp}.jpg"
+            image_path = capture_dir / f"capture_{timestamp}.jpg"
             cv2.imwrite(str(image_path), frame)
 
-            # Display captured image
+            # Display confirmation
             cv2.putText(
                 frame,
-                "Photo captured!",
+                "Captured!",
                 (50, 50),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
+                font,
+                font_scale,
                 (0, 255, 0),
-                2,
+                font_thickness
             )
             cv2.imshow("Webcam", frame)
-            cv2.waitKey(1000)
+            cv2.waitKey(display_time)
 
-            # Release webcam
+            # Cleanup resources
             cap.release()
             cv2.destroyAllWindows()
 
-            # Extract face from captured image
+            # Process and compare faces
             webcam_face = self.extract_face(str(image_path))
-            if not webcam_face or "face_encoding" not in webcam_face:
-                raise ValueError("No face detected in webcam image")
 
-            # Get face encoding from ID card
-            id_face_result = sessions[session_id]["data"]["id"]["face"]
-            if not id_face_result or "face_encoding" not in id_face_result:
-                raise ValueError("No face encoding found in ID card data")
+            if webcam_face is None or "face_encoding" not in webcam_face:
+                # Handle the case when no face is detected
+                logger.error("No face detected in the webcam image")
+                return {
+                    "similarity": 0.0,
+                    "match": False,
+                    "id_face_image": sessions[session_id]["data"]["id"]["face"]["face_image"],
+                    "webcam_image_path": str(image_path),
+                    "error": "No face detected in the webcam image"
+                }
+
+            id_face = sessions[session_id]["data"]["id"]["face"]
             
-            # Compare with reference face
-            comparison_result = self.compare_faces(
-                id_face_result["face_encoding"], webcam_face["face_encoding"]
+            comparison = self.compare_faces(
+                id_face["face_encoding"], 
+                webcam_face["face_encoding"]
             )
 
             return {
-                "similarity": comparison_result.get("similarity"),
-                "match": comparison_result.get("match"),
-                # "webcam_face_image": webcam_face_result.get("face_image"),
-                "id_face_image": id_face_result.get("face_image"),
-                # "webcam_image_path": str(webcam_image_path)  # Return the path of the saved webcam image
+                "similarity": comparison["similarity"],
+                "match": comparison["match"],
+                "id_face_image": id_face["face_image"],
+                "webcam_image_path": str(image_path)
             }
         except Exception as e:
-            # Cleanup on error
-            # if webcam_image_path.exists():
-            #     os.remove(webcam_image_path)
+            logger.error(f"Webcam capture failed: {str(e)}")
+            if 'cap' in locals(): cap.release()
+            cv2.destroyAllWindows()
             raise e
