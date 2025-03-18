@@ -6,30 +6,70 @@ import base64
 from PIL import Image
 import io
 import cv2 
-import tempfile
-import os
 import time
 
+from pydantic import BaseModel, ValidationError
 from utils.config_loader import load_config, get_project_root
 
-# Load configuration
-config = load_config("face_service")
+# Pydantic models for configuration validation
+
+class LoggingConfig(BaseModel):
+    level: str
+    format: str
+    file_path: str
+
+class ImageConfig(BaseModel):
+    output_format: str
+    jpeg_quality: int
+
+class WebcamConfig(BaseModel):
+    camera_index: int
+    countdown_seconds: int
+    capture_dir: str
+    font_scale: float
+    font_thickness: int
+    display_time_ms: int
+
+class FaceConfig(BaseModel):
+    similarity_threshold: float
+    detection_model: str
+    encoding_model: str
+    image: ImageConfig
+    webcam: WebcamConfig
+
+class PathsConfig(BaseModel):
+    uploads: str
+    models: str
+
+class AppConfig(BaseModel):
+    logging: LoggingConfig
+    face: FaceConfig
+    paths: PathsConfig
+
+# Load and validate configuration
+try:
+    raw_config = load_config("face_service")
+    config = AppConfig.parse_obj(raw_config)
+except ValidationError as e:
+    raise RuntimeError(f"Configuration validation error: {e}")
+
+# Use the logging as it was originally set up
 logger = logging.getLogger(__name__)
 
 class FaceService:
     def __init__(self):
-        # Face processing configurations
-        face_config = config["face"]
-        self.similarity_threshold = face_config["similarity_threshold"]
-        self.detection_model = face_config["detection_model"]
-        self.encoding_model = face_config["encoding_model"]
-        self.image_config = face_config["image"]
+        # Use validated face configuration
+        face_config = config.face
+        self.similarity_threshold = face_config.similarity_threshold
+        self.detection_model = face_config.detection_model
+        self.encoding_model = face_config.encoding_model
+        self.image_config = face_config.image
         
         # Webcam configurations
-        self.webcam_config = face_config["webcam"]
+        self.webcam_config = face_config.webcam
         
         # Path configurations
-        self.path_config = config["paths"]
+        self.path_config = config.paths
 
     def extract_face(self, image_path: str):
         try:
@@ -54,14 +94,14 @@ class FaceService:
             pil_image = Image.fromarray(face_image)
             buffered = io.BytesIO()
             
-            if self.image_config["output_format"].upper() == "JPEG":
+            if self.image_config.output_format.upper() == "JPEG":
                 pil_image.save(
                     buffered, 
-                    format=self.image_config["output_format"], 
-                    quality=self.image_config["jpeg_quality"]
+                    format=self.image_config.output_format, 
+                    quality=self.image_config.jpeg_quality
                 )
             else:
-                pil_image.save(buffered, format=self.image_config["output_format"])
+                pil_image.save(buffered, format=self.image_config.output_format)
                 
             img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
             
@@ -75,7 +115,7 @@ class FaceService:
                 "face_encoding": face_encoding.tolist(),
                 "face_location": face_locations[0],
                 "face_image": img_str,
-                "mime_type": f"image/{self.image_config['output_format'].lower()}"
+                "mime_type": f"image/{self.image_config.output_format.lower()}"
             }
         except Exception as e:
             logger.error(f"Face processing error in {image_path}: {str(e)}")
@@ -98,28 +138,28 @@ class FaceService:
         
     def capture_and_compare(self, session_id: str, sessions: dict):
         """
-        Enhanced webcam capture using configured parameters
+        Enhanced webcam capture using configured parameters.
         """
         try:
-            cap = cv2.VideoCapture(self.webcam_config["camera_index"])
+            cap = cv2.VideoCapture(self.webcam_config.camera_index)
             if not cap.isOpened():
                 raise RuntimeError("Could not open webcam")
 
             # Get webcam config parameters
             font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = self.webcam_config["font_scale"]
-            font_thickness = self.webcam_config["font_thickness"]
-            display_time = self.webcam_config["display_time_ms"]
+            font_scale = self.webcam_config.font_scale
+            font_thickness = self.webcam_config.font_thickness
+            display_time = self.webcam_config.display_time_ms
 
             # Capture countdown sequence
             start_time = time.time()
-            while (time.time() - start_time) < self.webcam_config["countdown_seconds"]:
+            while (time.time() - start_time) < self.webcam_config.countdown_seconds:
                 ret, frame = cap.read()
                 if not ret:
                     raise RuntimeError("Could not capture frame")
 
                 # Dynamic countdown text
-                remaining = self.webcam_config["countdown_seconds"] - int(time.time() - start_time)
+                remaining = self.webcam_config.countdown_seconds - int(time.time() - start_time)
                 cv2.putText(
                     frame,
                     f"Capturing in {remaining}...",
@@ -138,7 +178,7 @@ class FaceService:
                 raise RuntimeError("Could not capture final frame")
 
             # Save capture using configured path
-            capture_dir = get_project_root() / self.webcam_config["capture_dir"]
+            capture_dir = get_project_root() / self.webcam_config.capture_dir
             capture_dir.mkdir(parents=True, exist_ok=True)
             timestamp = int(time.time())
             image_path = capture_dir / f"capture_{timestamp}.jpg"
@@ -190,6 +230,7 @@ class FaceService:
             }
         except Exception as e:
             logger.error(f"Webcam capture failed: {str(e)}")
-            if 'cap' in locals(): cap.release()
+            if 'cap' in locals():
+                cap.release()
             cv2.destroyAllWindows()
             raise e

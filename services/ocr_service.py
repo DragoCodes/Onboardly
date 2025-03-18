@@ -1,36 +1,70 @@
 import easyocr
-from typing import Dict, Any
-from pathlib import Path
-import logging
 import re
 import json
 import time
+import logging
+from pathlib import Path
+from typing import Dict, Any, List
+
+from pydantic import BaseModel, ValidationError
 from utils.config_loader import load_config, get_project_root
 
 logger = logging.getLogger(__name__)
 
+# Pydantic models for configuration validation
+
+class LoggingConfig(BaseModel):
+    level: str
+    format: str
+    file_path: str
+
+class ExtractionConfig(BaseModel):
+    date_pattern: str
+    name_identifiers: List[str]
+    id_identifiers: List[str]
+    min_id_digits: int
+
+class OCRConfig(BaseModel):
+    languages: List[str]
+    use_gpu: bool
+    extraction: ExtractionConfig
+
+class PathsConfig(BaseModel):
+    uploads: str
+    processed: str
+
+class AppConfig(BaseModel):
+    logging: LoggingConfig
+    ocr: OCRConfig
+    paths: PathsConfig
+
 class OCRService:
     def __init__(self):
-        # Load configuration
-        self.config = load_config("ocr_service")
-        ocr_config = self.config["ocr"]
+        # Load and validate configuration
+        try:
+            raw_config = load_config("ocr_service")
+            self.config = AppConfig.parse_obj(raw_config)
+        except ValidationError as e:
+            raise RuntimeError(f"Configuration validation error: {e}")
+
+        ocr_config = self.config.ocr
         
         # Initialize paths
-        self.path_config = self.config["paths"]
-        self.uploads_dir = get_project_root() / self.path_config["uploads"]
-        self.processed_dir = get_project_root() / self.path_config["processed"]
+        self.path_config = self.config.paths
+        self.uploads_dir = get_project_root() / self.path_config.uploads
+        self.processed_dir = get_project_root() / self.path_config.processed
         self._create_directories()
         
         # OCR engine parameters
-        self.languages = ocr_config["languages"]
-        self.use_gpu = ocr_config["use_gpu"]
+        self.languages = ocr_config.languages
+        self.use_gpu = ocr_config.use_gpu
         
         # Text extraction patterns
-        extraction_config = ocr_config["extraction"]
-        self.date_pattern = re.compile(extraction_config["date_pattern"])
-        self.name_identifiers = extraction_config["name_identifiers"]
-        self.id_identifiers = extraction_config["id_identifiers"]
-        self.min_id_digits = extraction_config["min_id_digits"]
+        extraction_config = ocr_config.extraction
+        self.date_pattern = re.compile(extraction_config.date_pattern)
+        self.name_identifiers = extraction_config.name_identifiers
+        self.id_identifiers = extraction_config.id_identifiers
+        self.min_id_digits = extraction_config.min_id_digits
         
         # Lazy-loaded OCR reader
         self.reader = None
@@ -44,7 +78,7 @@ class OCRService:
         """Initialize OCR reader with configured settings"""
         if self.reader is None:
             logger.info("Initializing OCR reader with languages: %s (GPU: %s)",
-                      self.languages, self.use_gpu)
+                        self.languages, self.use_gpu)
             self.reader = easyocr.Reader(
                 self.languages,
                 gpu=self.use_gpu
