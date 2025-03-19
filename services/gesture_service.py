@@ -449,6 +449,144 @@ class GestureService:
 
         del results["face_images"]
         return results
+    
+    
+    def verify_gesture_from_video(
+        self, 
+        reference_face_encoding, 
+        video_path: str, 
+        expected_sequence: List[int] = [1, 2, 3, 4]
+    ) -> Dict[str, Any]:
+        """
+        Process a video file (provided by path) to verify the gesture sequence.
+        This function uses a fixed expected sequence (default is [1,2,3,4]).
+        """
+        results = {
+            "expected_sequence": expected_sequence,
+            "detected_sequence": [],
+            "success": False,
+            "face_matches": [],
+            "face_match_timestamps": [],
+            "overall_face_match": False,
+            "match_percentage": 0,
+            "total_face_checks": 0,
+            "successful_face_matches": 0,
+            "average_similarity": 0,
+        }
+        
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            results["error"] = "Cannot open video file"
+            return results
+
+        stable_detection_threshold = self.config.verify_liveness.stable_detection_frames_threshold
+        face_check_frequency = self.config.verify_liveness.face_check_frequency
+        max_stored_images = self.config.verify_liveness.max_stored_images
+
+        current_digit_index = 0
+        current_digit = expected_sequence[current_digit_index]
+        stable_detection_frames = 0
+        last_detected_number = None
+
+        total_face_frames = 0
+        total_face_matches = 0
+        face_frame_counter = 0
+
+        start_time = time.time()
+        
+        # Use MediaPipe Hands for processing frames
+        with mp_hands.Hands(
+            static_image_mode=False, max_num_hands=1, min_detection_confidence=0.5
+        ) as hands:
+            while cap.isOpened() and current_digit_index < len(expected_sequence):
+                ret, frame = cap.read()
+                if not ret:
+                    break
+
+                # (Optional) Flip frame if needed
+                frame = cv2.flip(frame, 1)
+                original_frame = frame.copy()
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                hand_results = hands.process(rgb_frame)
+
+                face_frame_counter += 1
+                current_time = time.time() - start_time
+
+                # Process face detection at a fixed frequency
+                if face_frame_counter >= face_check_frequency:
+                    face_frame_counter = 0
+                    face_rgb = cv2.cvtColor(original_frame, cv2.COLOR_BGR2RGB)
+                    face_locations = face_recognition.face_locations(face_rgb)
+                    if face_locations:
+                        face_encodings = face_recognition.face_encodings(face_rgb, face_locations)
+                        if face_encodings:
+                            comparison = self.face_service.compare_faces(
+                                reference_face_encoding, face_encodings[0]
+                            )
+                            if "error" not in comparison:
+                                results["face_matches"].append({
+                                    "similarity": comparison["similarity"],
+                                    "match": comparison["match"],
+                                    "timestamp": current_time,
+                                    "gesture_index": current_digit_index,
+                                })
+                                results["face_match_timestamps"].append(current_time)
+                                total_face_frames += 1
+                                if comparison["match"]:
+                                    total_face_matches += 1
+                            # We omit storing face images in this test function for simplicity.
+
+                detected_number = None
+                if hand_results.multi_hand_landmarks:
+                    for hand_landmark in hand_results.multi_hand_landmarks:
+                        # (Optional) Draw landmarks if you need to debug or log images
+                        mp_drawing.draw_landmarks(
+                            frame, hand_landmark, mp_hands.HAND_CONNECTIONS
+                        )
+                        detected_number = self.detect_number_gesture(hand_landmark)
+                    # (Optional) Log the detected number per frame
+                # Process stability for gesture detection
+                if detected_number is not None:
+                    if detected_number == last_detected_number:
+                        stable_detection_frames += 1
+                    else:
+                        stable_detection_frames = 0
+                    last_detected_number = detected_number
+                    if stable_detection_frames >= stable_detection_threshold:
+                        if detected_number == current_digit:
+                            results["detected_sequence"].append(detected_number)
+                            current_digit_index += 1
+                            stable_detection_frames = 0
+                            last_detected_number = None
+                            if current_digit_index < len(expected_sequence):
+                                current_digit = expected_sequence[current_digit_index]
+                        else:
+                            stable_detection_frames = 0  # Reset if wrong gesture detected
+
+            cap.release()
+        
+        # Calculate face match metrics
+        if total_face_frames > 0:
+            match_percentage = (total_face_matches / total_face_frames) * 100
+            results["match_percentage"] = round(match_percentage, 2)
+            results["total_face_checks"] = total_face_frames
+            results["successful_face_matches"] = total_face_matches
+            if results["face_matches"]:
+                total_similarity = sum(match["similarity"] for match in results["face_matches"])
+                avg_similarity = total_similarity / len(results["face_matches"])
+                results["average_similarity"] = round(avg_similarity, 2)
+            results["overall_face_match"] = match_percentage >= 50
+        else:
+            results["overall_face_match"] = False
+            results["match_percentage"] = 0
+            results["average_similarity"] = 0
+
+        # Determine overall success: both gesture sequence and face match should be acceptable.
+        if (results["detected_sequence"] == expected_sequence and 
+            results["overall_face_match"]):
+            results["success"] = True
+        
+        return results
 
 
 if __name__ == "__main__":

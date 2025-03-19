@@ -4,6 +4,7 @@ import random
 import sys
 import time
 from typing import Dict
+from fastapi import APIRouter, HTTPException, Response, Cookie
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fastapi import APIRouter, HTTPException, Response
@@ -35,13 +36,13 @@ async def create_session(response: Response):
     return {"session_id": session_id, "sequence": sequence}
 
 
-@router.delete("/cleanup/{session_id}")
-async def cleanup_session(session_id: str):
+@router.delete("/cleanup")
+async def cleanup_session(session_id: str = Cookie(None)):
     logger.info(f"Starting cleanup for session: {session_id}")
-    if session_id not in sessions:
+    if not session_id or session_id not in sessions:
         logger.warning(f"Session not found: {session_id}")
         raise HTTPException(status_code=404, detail="Session not found")
-
+    
     del sessions[session_id]
     logger.info(f"Session cleaned up: {session_id}")
     return {"status": "cleaned"}

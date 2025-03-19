@@ -5,6 +5,7 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import List
+from pydantic import BaseModel
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import fitz  # PyMuPDF
@@ -28,6 +29,12 @@ ocr = OCRService()
 face = FaceService()
 gesture_service = GestureService()
 
+STORED_VIDEO_PATH = Path(__file__).parent / "video" / "devansh1.mp4"
+IMAGE_PATH = Path(__file__).parent / "images" / "d1.jpeg"
+UPLOAD_PATH = Path(__file__).parent / "upload" / "sample_upload.jpeg"
+
+class Base64Video(BaseModel):
+    video: str  # base64 encoded video string
 
 def convert_pdf_to_images(pdf_path: Path) -> List[Path]:
     """Convert PDF to list of image paths"""
@@ -242,13 +249,132 @@ async def verify_gesture(session_id: str = Cookie(None)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/cleanup-gesture/{session_id}")
-async def cleanup_gesture_session(session_id: str):
-    logger.info(f"Starting cleanup for session: {session_id}")
-    if session_id not in sessions:
-        logger.warning(f"Session not found: {session_id}")
-        raise HTTPException(status_code=404, detail="Session not found")
+# @router.delete("/cleanup-gesture/{session_id}")
+# async def cleanup_gesture_session(session_id: str):
+#     logger.info(f"Starting cleanup for session: {session_id}")
+#     if session_id not in sessions:
+#         logger.warning(f"Session not found: {session_id}")
+#         raise HTTPException(status_code=404, detail="Session not found")
 
-    del sessions[session_id]
-    logger.info(f"Session cleaned up: {session_id}")
-    return {"status": "cleaned"}
+#     del sessions[session_id]
+#     logger.info(f"Session cleaned up: {session_id}")
+#     return {"status": "cleaned"}
+
+
+@router.post("/test-upload-id")
+async def test_upload_id(session_id: str = Cookie(None)):
+    """
+    Test API to process an ID image (OCR & face extraction) from a stored test image.
+    """
+    if not session_id or session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Invalid session")
+    
+    if not UPLOAD_PATH.exists():
+        raise HTTPException(status_code=400, detail="Test ID image not found")
+    
+    try:
+        # Perform OCR and face extraction
+        ocr_result = ocr.extract_text(str(UPLOAD_PATH))
+        face_result = face.extract_face(str(UPLOAD_PATH))
+        
+        if face_result and "error" in face_result:
+            raise HTTPException(status_code=400, detail=f"Face extraction failed: {face_result['error']}")
+
+        if not face_result or "face_encoding" not in face_result:
+            raise HTTPException(status_code=400, detail="No face detected in the test ID image")
+
+        # Initialize session data if not exists
+        if "data" not in sessions[session_id]:
+            sessions[session_id]["data"] = {}
+
+        # Store results
+        sessions[session_id]["data"]["id"] = {
+            "ocr": ocr_result,
+            "face": face_result  
+        }
+
+        # Save extracted face image
+        if face_result and "face_image" in face_result:
+            face_filename = f"face_{session_id}_test.jpg"
+            face_path = settings.UPLOAD_FOLDER.absolute() / face_filename
+            with open(face_path, "wb") as f:
+                f.write(base64.b64decode(face_result["face_image"]))
+            sessions[session_id]["data"]["id"]["face_image_path"] = str(face_path)
+        
+        return {
+            "ocr_result": ocr_result,
+            "face_detected": face_result is not None,
+            "face_image": face_result.get("face_image") if face_result else None,
+            "image_format": face_result.get("mime_type") if face_result else None
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/test-capture-and-compare")
+async def test_capture_and_compare(session_id: str = Cookie(None)):
+    """
+    API to compare a face extracted from a pre-stored image with the reference face.
+    """
+    if not session_id or session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Invalid session")
+    
+    if not IMAGE_PATH.exists():
+        raise HTTPException(status_code=400, detail="Stored image not found")
+    
+    try:
+        # Process the image with FaceService
+        image_face = face.extract_face(str(IMAGE_PATH))
+        
+        if image_face is None or "face_encoding" not in image_face:
+            raise HTTPException(status_code=400, detail="No face detected in the stored image")
+        
+        # Retrieve the reference face from session (uploaded ID)
+        id_face = sessions[session_id]["data"]["id"]["face"]
+        
+        comparison = face.compare_faces(id_face["face_encoding"], image_face["face_encoding"])
+        
+        return {
+            "similarity": comparison.get("similarity"),
+            "match": comparison.get("match"),
+            "id_face_image": id_face.get("face_image"),
+            "image_face_image": image_face.get("face_image")
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/verify-gesture-from-stored-video")
+async def verify_gesture_from_stored_video(session_id: str = Cookie(None)):
+    """
+    API endpoint that processes a pre-stored video (without accepting input from the client)
+    to verify a fixed gesture sequence [1, 2, 3, 4] and performs face matching.
+    """
+    if not session_id or session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Invalid session")
+    
+    # Ensure the session has a valid reference face (from an uploaded ID)
+    if "data" not in sessions[session_id] or "id" not in sessions[session_id]["data"]:
+        raise HTTPException(status_code=400, detail="ID document not uploaded")
+    
+    reference_face_encoding = sessions[session_id]["data"]["id"]["face"].get("face_encoding")
+    if not reference_face_encoding:
+        raise HTTPException(status_code=400, detail="No face encoding available in session")
+    
+    # Check if the stored video file exists
+    video_file = Path(STORED_VIDEO_PATH)
+    if not video_file.exists():
+        raise HTTPException(status_code=404, detail="Stored video not found")
+    
+    try:
+        # Process the stored video using the gesture verification function
+        results = gesture_service.verify_gesture_from_video(
+            reference_face_encoding,
+            str(video_file),
+            expected_sequence=[1, 2, 3, 4]
+        )
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
