@@ -12,6 +12,7 @@ dependencies = [
     "fastapi>=0.115.11",
     "just>=0.8.162",
     "locust>=2.33.2",
+    "loguru>=0.7.3",
     "mediapipe>=0.10.21",
     "opencv-python>=4.11.0.86",
     "pydantic>=2.10.6",
