@@ -1,0 +1,59 @@
+# GiG
+
+set shell := ["bash", "-cu"]
+set dotenv-load
+
+default:
+  just --list
+
+# setup environment and install dependencies
+setup:
+  uv sync
+
+# start fastapi server
+start-backend-server:
+  uv run uvicorn main:app --reload
+
+# NOTE : IGNORE BELOW COMMANDS FOR NOW
+
+# start logging server
+start-logging-server:
+  uv run logging_server.py
+
+# start frontend server
+start-frontend-server:
+  uv run frontend.py
+
+# start all servers (in background with proper logging)
+start-all:
+  @echo "Validating the configuation ..."
+  uv run validate/validate.py
+  @echo "Succesfully Validated the configuration ..."
+  @echo "Starting all servers..."
+  @echo "Starting logging server..."
+  uv run logging_server.py > logging_server.log 2>&1 &
+  @echo "Starting backend server..."
+  uv run start_server.py > backend_server.log 2>&1 &
+  @echo "Starting frontend server..."
+  uv run frontend.py > frontend_server.log 2>&1 &
+  @echo "All servers started! Check respective log files for details."
+  @echo "To stop all servers, use: just stop-all"
+
+# stop all servers
+stop-all:
+  #!/bin/bash
+  echo "Stopping all servers..."
+  pkill -f "uv run logging_server.py" || true
+  pkill -f "uv run start_server.py" || true
+  pkill -f "uv run frontend.py" || true
+  echo "All servers stopped."
+
+
+# view mkdocs:
+documentation:
+  uv run mkdocs serve
+
+
+# run bentoml
+serve_bm:
+	uv run bentoml serve
