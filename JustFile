@@ -14,6 +14,8 @@ setup:
 start-backend-server:
   uv run uvicorn main:app --reload
 
+# NOTE : IGNORE BELOW COMMANDS FOR NOW
+
 # start logging server
 start-logging-server:
   uv run logging_server.py
