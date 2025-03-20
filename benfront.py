@@ -1,46 +1,55 @@
-"""Frontend module for the Onboardly ID Verification System.
+"""Frontend module for the Onboardly ID Verification System using BentoML backend.
 
-This module provides a Streamlit-based interface for interacting with the 
-BentoML backend to perform ID
-verification, face comparison, and gesture verification.
+This module provides a Streamlit-based interface for interacting with the BentoML
+backend to perform ID verification, face comparison, and gesture verification.
 """
 
 import tempfile
+import time
 from pathlib import Path
 
 import requests
 import streamlit as st
 
 # Constants
+BACKEND_URL: str = "http://localhost:3000"  # Default BentoML serving port
 HTTP_OK: int = 200  # HTTP status code for success
 GESTURE_STEP: int = 2  # Step number for gesture verification
-BACKEND_URL: str = "http://localhost:3000"  # Default BentoML serving port
 REQUEST_TIMEOUT: float = 60.0  # Timeout for HTTP requests in seconds
+MAX_RETRIES: int = 5  # Maximum number of retries for session creation
+RETRY_DELAY: float = 2.0  # Delay between retries in seconds
 
 
 def create_session() -> str | None:
-    """Create a new session by calling the backend API.
+    """Create a new session by calling the BentoML backend API.
 
     Returns:
         str | None: The session ID if successful, None otherwise.
 
     """
-    result = None
-    try:
-        response = requests.post(
-            f"{BACKEND_URL}/get_session_id", timeout=REQUEST_TIMEOUT,
-        )
-        if response.status_code == HTTP_OK:
-            result = response.text.strip('"')  # Remove quotes from the response
-        else:
-            st.error(
-                f"Failed to create session: {response.status_code} - {response.text}",
+    retries = MAX_RETRIES
+    while retries > 0:
+        try:
+            response = requests.post(
+                f"{BACKEND_URL}/get_session_id",
+                timeout=REQUEST_TIMEOUT,
             )
-            result = None
-    except requests.RequestException as e:
-        st.error(f"Error connecting to backend: {e!s}")
-        result = None
-    return result
+            if response.status_code == HTTP_OK:
+                return response.text.strip('"')  # Remove quotes from the response
+            st.error(
+                f"Failed to create session: {response.status_code} - "
+                f"{response.text}",
+            )
+            return None
+        except requests.exceptions.RequestException as e:
+            st.error(f"Error connecting to backend: {e!s}. Retrying...")
+            retries -= 1
+            time.sleep(RETRY_DELAY)  # Wait before retrying
+    st.error(
+        "Failed to establish a connection to the backend service after multiple "
+        "attempts.",
+    )
+    return None
 
 
 def process_id_file(file_content: bytes) -> dict:
@@ -50,10 +59,10 @@ def process_id_file(file_content: bytes) -> dict:
         file_content (bytes): The binary content of the uploaded ID file.
 
     Returns:
-        dict: Response from the backend or an error dict if the request fails.
+        dict: The response from the backend, or an error dictionary if the request
+            fails.
 
     """
-    result = None
     try:
         # Save uploaded file to a temporary file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
@@ -71,65 +80,62 @@ def process_id_file(file_content: bytes) -> dict:
         Path(tmp_file_path).unlink()
 
         if response.status_code == HTTP_OK:
-            result = response.json()
-        else:
-            st.error(f"Failed to process ID: {response.status_code} - {response.text}")
-            result = {"error": f"HTTP {response.status_code}: {response.text}"}
-    except requests.RequestException as e:
+            return response.json()
+        st.error(f"Failed to process ID: {response.status_code} - {response.text}")
+        return {"error": f"HTTP {response.status_code}: {response.text}"}
+    except requests.exceptions.RequestException as e:
         st.error(f"Error processing ID: {e!s}")
-        result = {"error": str(e)}
-    return result
+        return {"error": str(e)}
 
 
 def capture_and_compare() -> dict:
-    """Capture a selfie and compare it with the ID face using the backend API.
+    """Capture a selfie and compare it with the ID face using the BentoML backend API.
 
     Returns:
-        dict: Response from the backend or an error dict if the request fails.
+        dict: The response from the backend, or an error dictionary if the request
+            fails.
 
     """
-    result = None
     try:
         response = requests.post(
-            f"{BACKEND_URL}/capture_and_compare", timeout=REQUEST_TIMEOUT,
+            f"{BACKEND_URL}/capture_and_compare",
+            timeout=REQUEST_TIMEOUT,
         )
         if response.status_code == HTTP_OK:
-            result = response.json()
-        else:
-            st.error(
-                f"Failed to capture and compare: {response.status_code} - "
-                f"{response.text}",
-            )
-            result = {"error": f"HTTP {response.status_code}: {response.text}"}
-    except requests.RequestException as e:
+            st.write("Capture and compare response:", response.json())
+            return response.json()
+        st.error(
+            f"Failed to capture and compare: {response.status_code} - "
+            f"{response.text}",
+        )
+        return {"error": f"HTTP {response.status_code}: {response.text}"}
+    except requests.exceptions.RequestException as e:
         st.error(f"Error in capture and compare: {e!s}")
-        result = {"error": str(e)}
-    return result
+        return {"error": str(e)}
 
 
 def verify_gesture() -> dict:
-    """Verify the user's gesture using the backend API.
+    """Verify the user's gesture using the BentoML backend API.
 
     Returns:
-        dict: Response from the backend or an error dict if the request fails.
+        dict: The response from the backend, or an error dictionary if the request
+            fails.
 
     """
-    result = None
     try:
         response = requests.post(
-            f"{BACKEND_URL}/verify_gesture", timeout=REQUEST_TIMEOUT,
+            f"{BACKEND_URL}/verify_gesture",
+            timeout=REQUEST_TIMEOUT,
         )
         if response.status_code == HTTP_OK:
-            result = response.json()
-        else:
-            st.error(
-                f"Failed to verify gesture: {response.status_code} - {response.text}",
-            )
-            result = {"error": f"HTTP {response.status_code}: {response.text}"}
-    except requests.RequestException as e:
+            return response.json()
+        st.error(
+            f"Failed to verify gesture: {response.status_code} - {response.text}",
+        )
+        return {"error": f"HTTP {response.status_code}: {response.text}"}
+    except requests.exceptions.RequestException as e:
         st.error(f"Error in gesture verification: {e!s}")
-        result = {"error": str(e)}
-    return result
+        return {"error": str(e)}
 
 
 # App title
@@ -168,9 +174,6 @@ progress = st.progress(st.session_state.current_step / len(steps))
 
 # Sidebar for important information
 st.sidebar.title("Session Information")
-st.sidebar.markdown(f"**Session ID:** `{st.session_state.session_id}`")
-st.sidebar.markdown(f"**Service URL:** `{BACKEND_URL}`")
-st.sidebar.markdown(f"**Current Step:** {steps[st.session_state.current_step]}")
 
 # Additional important information
 st.sidebar.title("Verification Data")
@@ -193,6 +196,7 @@ if st.session_state.current_step == 0:
 
         with st.spinner("Processing ID card..."):
             id_result = process_id_file(file_content)
+            st.write("ID processing result:", id_result)
 
         if id_result and "error" not in id_result:
             st.success("ID processed successfully")
@@ -211,7 +215,7 @@ if st.session_state.current_step == 0:
 
             # Display face detection result
             face_data = id_result.get("face_data", {})
-            if face_data.get("face_detected", False):
+            if face_data.get("face_detected", True):
                 st.write("✅ Face detected in ID")
                 st.session_state.important_info["Face Detected"] = "Yes"
             else:
@@ -222,6 +226,7 @@ if st.session_state.current_step == 0:
             if "session_id" in id_result:
                 st.session_state.session_id = id_result["session_id"]
                 st.sidebar.success("Session ID updated")
+                # Removed st.rerun() here to prevent premature reload
 
             st.session_state.current_step += 1  # Move to next step
         elif id_result and "error" in id_result:
@@ -240,8 +245,8 @@ if st.session_state.current_step == 1:
             compare_result = capture_and_compare()
 
         if compare_result and "error" not in compare_result:
-            match_score = compare_result.get("match_score", 0)
-            is_match = compare_result.get("match", False)
+            match_score = compare_result.get("similarity", 0)
+            is_match = compare_result.get("match", True)
 
             if is_match:
                 st.success(f"Face match successful! Match score: {match_score:.2f}")
