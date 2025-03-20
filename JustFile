@@ -1,5 +1,3 @@
-# GiG
-
 set shell := ["bash", "-cu"]
 set dotenv-load
 
@@ -15,10 +13,10 @@ start-backend-server-fastapi:
   uv run uvicorn main:app --reload
 
 # start bentoml server
-start-backend-server-fastapi:
+start-backend-server-bentoml:
   cd bentoml && uv run bentoml serve
 
-# NOTE : IGNORE BELOW COMMANDS FOR NOW
+# NOTE: IGNORE BELOW COMMANDS FOR NOW
 
 # start logging server
 start-logging-server:
@@ -36,7 +34,7 @@ start-all:
   @echo "Starting backend fastapi server..."
   uv run uvicorn main:app --reload > backend_server.log 2>&1 &
   @echo "Starting backend bentoml server..."
-  cd bentoml & uv run bentoml serve > backend_server_bento.log 2>&1 &
+  cd bentoml && uv run bentoml serve > backend_server_bento.log 2>&1 &
   @echo "Starting frontend server..."
   uv run streamlit run website.py > frontend_server.log 2>&1 &
   @echo "All servers started! Check respective log files for details."
@@ -46,20 +44,20 @@ start-all:
 stop-all:
   #!/bin/bash
   echo "Stopping all servers..."
-  pkill -f "uv run logging_server.py" || true
-  pkill -f "uv run start_server.py" || true
-  pkill -f "uv run frontend.py" || true
+  pkill -f "uv run python -m unified_logging.logging_server" || true
+  pkill -f "uv run uvicorn main:app" || true
+  pkill -f "bentoml serve" || true  # Match the bentoml serve process
+  pkill -f "uv run streamlit run website.py" || true
   echo "All servers stopped."
 
-
-# view mkdocs:
+# view mkdocs
 documentation:
   uv run mkdocs serve
 
 # do load testing
-load_testing:
+load-testing:
   uv run locust -f locustfile.py --host=http://127.0.0.1:8000
 
 # run bentoml
-serve_bm:
-	uv run bentoml serve
+serve-bm:
+  uv run bentoml serve
