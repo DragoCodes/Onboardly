@@ -1,3 +1,4 @@
+import time
 from io import BytesIO
 
 import requests
@@ -9,11 +10,17 @@ BACKEND_URL = "http://localhost:8000"
 
 # Function to create a session
 def create_session():
-    response = requests.post(f"{BACKEND_URL}/api/sessions/create-session")
-    if response.status_code == 200:
-        return response.json()["session_id"], response.cookies.get("session_id")
-    st.error("Failed to create session")
-    return None, None
+    retries = 5
+    while retries > 0:
+        try:
+            response = requests.post(f"{BACKEND_URL}/api/sessions/create-session")
+            response.raise_for_status()
+            return response.json()["session_id"], response.cookies.get("session_cookie")
+        except requests.exceptions.ConnectionError:
+            print("Connection refused. Retrying...")
+            retries -= 1
+            time.sleep(2)  # Wait for 2 seconds before retrying
+    raise ConnectionError("Failed to establish a connection to the backend service.")
 
 # Function to upload ID card
 def upload_id(session_id, file):
