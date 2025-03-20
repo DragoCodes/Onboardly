@@ -16,7 +16,6 @@ start-backend-server-fastapi:
 start-backend-server-bentoml:
   cd bentoml && uv run bentoml serve
 
-# NOTE: IGNORE BELOW COMMANDS FOR NOW
 
 # start logging server
 start-logging-server:
