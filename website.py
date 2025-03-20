@@ -15,7 +15,7 @@ from PIL import Image
 BACKEND_URL: str = "http://localhost:8000"  # FastAPI backend URL
 HTTP_OK: int = 200  # HTTP status code for success
 GESTURE_STEP: int = 2  # Step number for gesture verification
-REQUEST_TIMEOUT: float = 10.0  # Timeout for HTTP requests in seconds
+REQUEST_TIMEOUT: float = 60.0  # Timeout for HTTP requests in seconds
 MAX_RETRIES: int = 5  # Maximum number of retries for session creation
 RETRY_DELAY: float = 2.0  # Delay between retries in seconds
 
