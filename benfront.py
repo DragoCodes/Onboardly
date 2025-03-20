@@ -15,7 +15,7 @@ import streamlit as st
 HTTP_OK: int = 200  # HTTP status code for success
 GESTURE_STEP: int = 2  # Step number for gesture verification
 BACKEND_URL: str = "http://localhost:3000"  # Default BentoML serving port
-REQUEST_TIMEOUT: float = 10.0  # Timeout for HTTP requests in seconds
+REQUEST_TIMEOUT: float = 60.0  # Timeout for HTTP requests in seconds
 
 
 def create_session() -> str | None:
