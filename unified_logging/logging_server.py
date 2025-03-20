@@ -1,11 +1,23 @@
-# unified_logging/logging_server.py
+"""Logging server module.
+
+This module implements a logging server that receives log messages over the network
+and logs them to a file.
+"""
+
 import zmq
 from loguru import logger
+
 from unified_logging.config_types import LoggingConfigs
 from unified_logging.logging_setup import setup_logging
 
 
 def set_logging_configs(logging_configs: LoggingConfigs) -> None:
+    """Configure the logger with the provided logging settings.
+
+    Args:
+        logging_configs (LoggingConfigs): The logging configuration to apply.
+
+    """
     logger.remove()
     logger.add(
         logging_configs.log_file_name,
@@ -20,6 +32,13 @@ def set_logging_configs(logging_configs: LoggingConfigs) -> None:
 
 
 def start_logging_server(logging_configs: LoggingConfigs) -> None:
+    """Start the logging server to receive and process log messages.
+
+    Args:
+        logging_configs (LoggingConfigs): The logging configuration including
+        server port.
+
+    """
     socket = zmq.Context().socket(zmq.SUB)
     socket.bind(f"tcp://127.0.0.1:{logging_configs.log_server_port}")
     socket.subscribe("")

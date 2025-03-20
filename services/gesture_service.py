@@ -1,13 +1,14 @@
-# services/gesture_service.py
+"""Gesture service module for liveness detection and gesture verification."""
+
 import base64
 import io
-import os
 import random
 import sys
 import time
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(str(Path(__file__).parent.parent))
 
 import cv2
 import face_recognition
@@ -16,6 +17,7 @@ import numpy as np
 from loguru import logger
 from PIL import Image
 from pydantic import BaseModel, ValidationError
+
 from services.face_service import FaceService
 from unified_logging.logging_setup import setup_logging
 from utils.config_loader import load_config
@@ -23,26 +25,38 @@ from utils.config_loader import load_config
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
 
+# Constants
+ESC_KEY = 27
+MATCH_THRESHOLD = 50
+
 
 # Pydantic models for gesture service configuration
 class HandConfig(BaseModel):
+    """Configuration for hand detection parameters."""
+
     static_image_mode: bool
     max_num_hands: int
     min_detection_confidence: float
 
 
 class VerifyLivenessConfig(BaseModel):
+    """Configuration for liveness verification parameters."""
+
     stable_detection_frames_threshold: int
     face_check_frequency: int
     max_stored_images: int
 
 
 class GestureServiceConfig(BaseModel):
+    """Configuration for the gesture service."""
+
     hand: HandConfig
     verify_liveness: VerifyLivenessConfig
 
 
 class AppConfig(BaseModel):
+    """Application configuration including gesture service settings."""
+
     gesture: GestureServiceConfig
 
 
@@ -51,14 +65,18 @@ setup_logging()
 
 
 class GestureService:
-    def __init__(self):
+    """Service for detecting gestures and verifying liveness."""
+
+    def __init__(self) -> None:
+        """Initialize the GestureService with configuration and setup."""
         try:
             raw_config = load_config("gesture_service")
             config = AppConfig.parse_obj(raw_config)
             logger.info("GestureService configuration loaded successfully")
         except ValidationError as e:
-            logger.error(f"Gesture Service config validation error: {e}")
-            raise RuntimeError(f"Gesture Service config validation error: {e}")
+            error_msg = f"Gesture Service config validation error: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
 
         self.config = config.gesture
 
@@ -68,16 +86,24 @@ class GestureService:
             min_detection_confidence=self.config.hand.min_detection_confidence,
         )
         logger.debug(
-            f"MediaPipe Hands initialized with max_num_hands={self.config.hand.max_num_hands}"
+            f"MediaPipe Hands initialized with max_num_hands="
+            f"{self.config.hand.max_num_hands}",
         )
 
         self.face_service = FaceService()
         logger.info("FaceService initialized for GestureService")
 
-    def detect_number_gesture(self, hand_landmarks) -> Optional[int]:
-        """
-        Detect which number (1-7) is being shown by the hand.
+    def detect_number_gesture(self, hand_landmarks: Any) -> int | None:              # noqa: C901, PLR0911, ANN401
+        """Detect which number (1-7) is being shown by the hand.
+
         Logging moved to verify_liveness for significant events only.
+
+        Args:
+            hand_landmarks: The hand landmarks detected by MediaPipe.
+
+        Returns:
+            The detected number (1-7) or None if no gesture is recognized.
+
         """
         try:
             landmarks = [
@@ -97,7 +123,7 @@ class GestureService:
             thumb_base_x = landmarks[finger_indices["thumb"]["base"]][0]
             wrist_x = landmarks[0][0]
             finger_extended["thumb"] = abs(thumb_tip_x - wrist_x) > abs(
-                thumb_base_x - wrist_x
+                thumb_base_x - wrist_x,
             )
 
             for finger in ["index", "middle", "ring", "pinky"]:
@@ -124,7 +150,7 @@ class GestureService:
                         index_middle_dist > min_spread_distance,
                         middle_ring_dist > min_spread_distance,
                         ring_pinky_dist > min_spread_distance,
-                    ]
+                    ],
                 )
 
                 if fingers_spread:
@@ -134,56 +160,83 @@ class GestureService:
                 finger_extended[f] for f in ["middle", "ring", "pinky"]
             ):
                 return 1
-            elif (
+            if (
                 finger_extended["index"]
                 and finger_extended["middle"]
                 and not any(finger_extended[f] for f in ["ring", "pinky"])
             ):
                 return 2
-            elif (
+            if (
                 finger_extended["index"]
                 and finger_extended["middle"]
                 and finger_extended["ring"]
                 and not finger_extended["pinky"]
             ):
                 return 3
-            elif (
+            if (
                 all(finger_extended[f] for f in ["index", "middle", "ring", "pinky"])
                 and not finger_extended["thumb"]
             ):
                 return 4
-            elif not any(finger_extended.values()):
+            if not any(finger_extended.values()):
                 return 6
-            elif (
+            if (
                 finger_extended["thumb"]
                 and finger_extended["pinky"]
                 and not any(finger_extended[f] for f in ["index", "middle", "ring"])
             ):
                 return 7
 
-            return None
-        except Exception as e:
+            return None        # noqa: TRY300
+        except Exception as e:    # noqa: BLE001
             logger.error(f"Error detecting number gesture: {e}", exc_info=True)
             return None
 
-    def generate_random_digits(self, count: int = 4) -> List[int]:
-        digits = random.choices(range(1, 8), k=count)
+    def generate_random_digits(self, count: int = 4) -> list[int]:
+        """Generate a sequence of random digits for liveness verification.
+
+        Args:
+            count: Number of digits to generate. Defaults to 4.
+
+        Returns:
+            A list of random digits between 1 and 7.
+
+        """
+        digits = random.choices(range(1, 8), k=count)         # noqa: S311
         logger.info(f"Generated random digit sequence: {digits}")
         return digits
 
-    def _encode_image_to_base64(self, frame):
+    def _encode_image_to_base64(self, frame: Any) -> str | None:    # noqa: ANN401
+        """Encode the image frame to a base64 string.
+
+        Args:
+            frame: The image frame to encode.
+
+        Returns:
+            The base64 encoded string of the image or None if encoding fails.
+
+        """
         try:
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             pil_image = Image.fromarray(rgb_frame)
             buffer = io.BytesIO()
             pil_image.save(buffer, format="JPEG", quality=75)
-            img_str = base64.b64encode(buffer.getvalue()).decode("utf-8")
-            return img_str
-        except Exception as e:
+            return base64.b64encode(buffer.getvalue()).decode("utf-8")
+        except Exception as e:    # noqa: BLE001
             logger.error(f"Error encoding image to base64: {e}", exc_info=True)
             return None
 
-    def verify_liveness(self, reference_face_encoding) -> Dict[str, Any]:
+    def verify_liveness(self, reference_face_encoding: Any) -> dict[str, Any]:              # noqa: C901, PLR0912, PLR0915, ANN401
+        """Verify liveness by checking if the user performs the correct
+        gesture sequence.
+
+        Args:
+            reference_face_encoding: The face encoding to match against.
+
+        Returns:
+            Results of the liveness verification as a dictionary.
+
+        """
         logger.info("Starting liveness verification")
         digit_sequence = self.generate_random_digits(4)
         results = {
@@ -196,17 +249,18 @@ class GestureService:
             "face_images": [],
         }
 
-        print(
-            f"\nLiveness Check: Please show these numbers with your hand: {' '.join(map(str, digit_sequence))}"
+        logger.info(
+            "\nLiveness Check: Please show these numbers with your hand: "
+            f"{' '.join(map(str, digit_sequence))}",
         )
-        print("Instructions:")
-        print("1: Show INDEX finger only")
-        print("2: Show INDEX and MIDDLE fingers")
-        print("3: Show INDEX, MIDDLE, and RING fingers")
-        print("4: Show INDEX, MIDDLE, RING, and PINKY fingers")
-        print("5: Show ALL FIVE fingers including THUMB")
-        print("6: Fist")
-        print("7: Show THUMB and Pinky only")
+        logger.info("Instructions:")
+        logger.info("1: Show INDEX finger only")
+        logger.info("2: Show INDEX and MIDDLE fingers")
+        logger.info("3: Show INDEX, MIDDLE, and RING fingers")
+        logger.info("4: Show INDEX, MIDDLE, RING, and PINKY fingers")
+        logger.info("5: Show ALL FIVE fingers including THUMB")
+        logger.info("6: Fist")
+        logger.info("7: Show THUMB and Pinky only")
 
         cap = cv2.VideoCapture(0)
         if not cap.isOpened():
@@ -231,7 +285,7 @@ class GestureService:
         start_time = time.time()
 
         with mp_hands.Hands(
-            static_image_mode=False, max_num_hands=1, min_detection_confidence=0.5
+            static_image_mode=False, max_num_hands=1, min_detection_confidence=0.5,
         ) as hands:
             instruction_text = f"Show digit {current_digit} with your hand"
             feedback_text = ""
@@ -257,11 +311,11 @@ class GestureService:
                     face_locations = face_recognition.face_locations(face_rgb)
                     if face_locations:
                         face_encodings = face_recognition.face_encodings(
-                            face_rgb, face_locations
+                            face_rgb, face_locations,
                         )
                         if face_encodings:
                             comparison = self.face_service.compare_faces(
-                                reference_face_encoding, face_encodings[0]
+                                reference_face_encoding, face_encodings[0],
                             )
                             if "error" not in comparison:
                                 match_result = {
@@ -278,12 +332,17 @@ class GestureService:
                                         f"Face match: {comparison['similarity']:.2f}"
                                     )
                                     logger.debug(
-                                        f"Face match detected: similarity={comparison['similarity']}"
+                                        f"Face match detected: similarity="
+                                        f"{comparison['similarity']}",
                                     )
                                 else:
-                                    face_feedback_text = f"Face not recognized: {comparison['similarity']:.2f}"
+                                    face_feedback_text = (
+                                        f"Face not recognized: "
+                                        f"{comparison['similarity']:.2f}"
+                                    )
                                     logger.debug(
-                                        f"Face mismatch: similarity={comparison['similarity']}"
+                                        f"Face mismatch: similarity="
+                                        f"{comparison['similarity']}",
                                     )
                                 total_face_frames += 1
                                 if len(results["face_images"]) < max_stored_images:
@@ -296,7 +355,7 @@ class GestureService:
                                         2,
                                     )
                                     img_base64 = self._encode_image_to_base64(
-                                        original_frame
+                                        original_frame,
                                     )
                                     if img_base64:
                                         face_img_data = {
@@ -359,7 +418,7 @@ class GestureService:
                 if hand_results.multi_hand_landmarks:
                     for hand_landmark in hand_results.multi_hand_landmarks:
                         mp_drawing.draw_landmarks(
-                            frame, hand_landmark, mp_hands.HAND_CONNECTIONS
+                            frame, hand_landmark, mp_hands.HAND_CONNECTIONS,
                         )
                         detected_number = self.detect_number_gesture(hand_landmark)
                     if detected_number is not None:
@@ -384,7 +443,8 @@ class GestureService:
                             feedback_text = f"Correct! {detected_number} recognized."
                             results["detected_sequence"].append(detected_number)
                             logger.info(
-                                f"Correct gesture detected: {detected_number} at index {current_digit_index}"
+                                f"Correct gesture detected: {detected_number} at index "
+                                f"{current_digit_index}",
                             )
                             current_digit_index += 1
                             stable_detection_frames = 0
@@ -407,19 +467,20 @@ class GestureService:
                                     3,
                                 )
                                 logger.success(
-                                    "Liveness sequence completed successfully"
+                                    "Liveness sequence completed successfully",
                                 )
                                 cv2.imshow("Liveness Check", frame)
                                 cv2.waitKey(2000)
                         else:
                             feedback_text = f"Not correct. Please show {current_digit}"
                             logger.warning(
-                                f"Incorrect gesture detected: {detected_number}, expected {current_digit}"
+                                f"Incorrect gesture detected: {detected_number}, "
+                                f"expected {current_digit}",
                             )
                             stable_detection_frames = 0
 
                 cv2.imshow("Liveness Check", frame)
-                if cv2.waitKey(5) & 0xFF == 27:  # ESC key
+                if cv2.waitKey(5) & 0xFF == ESC_KEY:  # ESC key
                     logger.info("Liveness check interrupted by user (ESC key)")
                     break
 
@@ -437,9 +498,10 @@ class GestureService:
                 )
                 avg_similarity = total_similarity / len(results["face_matches"])
                 results["average_similarity"] = round(avg_similarity, 2)
-            results["overall_face_match"] = match_percentage >= 50
+            results["overall_face_match"] = match_percentage >= MATCH_THRESHOLD
             logger.info(
-                f"Liveness check completed: match_percentage={results['match_percentage']}%, success={results['success']}"
+                f"Liveness check completed: match_percentage="
+                f"{results['match_percentage']}%, success={results['success']}",
             )
         else:
             results["overall_face_match"] = False
@@ -449,18 +511,28 @@ class GestureService:
 
         del results["face_images"]
         return results
-    
-    
+
     def verify_gesture_from_video(
-        self, 
-        reference_face_encoding, 
-        video_path: str, 
-        expected_sequence: List[int] = [1, 2, 3, 4]
-    ) -> Dict[str, Any]:
+        self,
+        reference_face_encoding: Any,                # ANN401
+        video_path: str,
+        expected_sequence: list[int] | None = None,
+    ) -> dict[str, Any]:
+        """Verify gestures from a video against a face encoding and gesture sequence.
+
+        Args:
+            reference_face_encoding: The face encoding to match against.
+            video_path: Path to the video file.
+            expected_sequence: The sequence of digits to verify. Defaults to
+                [1, 2, 3, 4].
+
+        Returns:
+            Results of the gesture verification as a dictionary.
+
         """
-        Process a video file (provided by path) to verify the gesture sequence.
-        This function uses a fixed expected sequence (default is [1,2,3,4]).
-        """
+        expected_sequence = (
+            expected_sequence if expected_sequence is not None else [1, 2, 3, 4]
+        )
         results = {
             "expected_sequence": expected_sequence,
             "detected_sequence": [],
@@ -473,15 +545,16 @@ class GestureService:
             "successful_face_matches": 0,
             "average_similarity": 0,
         }
-        
+
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             results["error"] = "Cannot open video file"
             return results
 
-        stable_detection_threshold = self.config.verify_liveness.stable_detection_frames_threshold
+        stable_detection_threshold = (
+            self.config.verify_liveness.stable_detection_frames_threshold
+        )
         face_check_frequency = self.config.verify_liveness.face_check_frequency
-        max_stored_images = self.config.verify_liveness.max_stored_images
 
         current_digit_index = 0
         current_digit = expected_sequence[current_digit_index]
@@ -493,17 +566,15 @@ class GestureService:
         face_frame_counter = 0
 
         start_time = time.time()
-        
-        # Use MediaPipe Hands for processing frames
+
         with mp_hands.Hands(
-            static_image_mode=False, max_num_hands=1, min_detection_confidence=0.5
+            static_image_mode=False, max_num_hands=1, min_detection_confidence=0.5,
         ) as hands:
             while cap.isOpened() and current_digit_index < len(expected_sequence):
                 ret, frame = cap.read()
                 if not ret:
                     break
 
-                # (Optional) Flip frame if needed
                 frame = cv2.flip(frame, 1)
                 original_frame = frame.copy()
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -512,40 +583,40 @@ class GestureService:
                 face_frame_counter += 1
                 current_time = time.time() - start_time
 
-                # Process face detection at a fixed frequency
                 if face_frame_counter >= face_check_frequency:
                     face_frame_counter = 0
                     face_rgb = cv2.cvtColor(original_frame, cv2.COLOR_BGR2RGB)
                     face_locations = face_recognition.face_locations(face_rgb)
                     if face_locations:
-                        face_encodings = face_recognition.face_encodings(face_rgb, face_locations)
+                        face_encodings = face_recognition.face_encodings(
+                            face_rgb, face_locations,
+                        )
                         if face_encodings:
                             comparison = self.face_service.compare_faces(
-                                reference_face_encoding, face_encodings[0]
+                                reference_face_encoding, face_encodings[0],
                             )
                             if "error" not in comparison:
-                                results["face_matches"].append({
-                                    "similarity": comparison["similarity"],
-                                    "match": comparison["match"],
-                                    "timestamp": current_time,
-                                    "gesture_index": current_digit_index,
-                                })
+                                results["face_matches"].append(
+                                    {
+                                        "similarity": comparison["similarity"],
+                                        "match": comparison["match"],
+                                        "timestamp": current_time,
+                                        "gesture_index": current_digit_index,
+                                    },
+                                )
                                 results["face_match_timestamps"].append(current_time)
                                 total_face_frames += 1
                                 if comparison["match"]:
                                     total_face_matches += 1
-                            # We omit storing face images in this test function for simplicity.
 
                 detected_number = None
                 if hand_results.multi_hand_landmarks:
                     for hand_landmark in hand_results.multi_hand_landmarks:
-                        # (Optional) Draw landmarks if you need to debug or log images
                         mp_drawing.draw_landmarks(
-                            frame, hand_landmark, mp_hands.HAND_CONNECTIONS
+                            frame, hand_landmark, mp_hands.HAND_CONNECTIONS,
                         )
                         detected_number = self.detect_number_gesture(hand_landmark)
-                    # (Optional) Log the detected number per frame
-                # Process stability for gesture detection
+
                 if detected_number is not None:
                     if detected_number == last_detected_number:
                         stable_detection_frames += 1
@@ -561,31 +632,33 @@ class GestureService:
                             if current_digit_index < len(expected_sequence):
                                 current_digit = expected_sequence[current_digit_index]
                         else:
-                            stable_detection_frames = 0  # Reset if wrong gesture detected
+                            stable_detection_frames = 0  # Reset if wrong gesture
 
             cap.release()
-        
-        # Calculate face match metrics
+
         if total_face_frames > 0:
             match_percentage = (total_face_matches / total_face_frames) * 100
             results["match_percentage"] = round(match_percentage, 2)
             results["total_face_checks"] = total_face_frames
             results["successful_face_matches"] = total_face_matches
             if results["face_matches"]:
-                total_similarity = sum(match["similarity"] for match in results["face_matches"])
+                total_similarity = sum(
+                    match["similarity"] for match in results["face_matches"]
+                )
                 avg_similarity = total_similarity / len(results["face_matches"])
                 results["average_similarity"] = round(avg_similarity, 2)
-            results["overall_face_match"] = match_percentage >= 50
+            results["overall_face_match"] = match_percentage >= MATCH_THRESHOLD
         else:
             results["overall_face_match"] = False
             results["match_percentage"] = 0
             results["average_similarity"] = 0
 
-        # Determine overall success: both gesture sequence and face match should be acceptable.
-        if (results["detected_sequence"] == expected_sequence and 
-            results["overall_face_match"]):
+        if (
+            results["detected_sequence"] == expected_sequence
+            and results["overall_face_match"]
+        ):
             results["success"] = True
-        
+
         return results
 
 
@@ -593,4 +666,4 @@ if __name__ == "__main__":
     gesture_service = GestureService()
     dummy_encoding = np.zeros(128)  # Placeholder; replace with actual encoding
     result = gesture_service.verify_liveness(dummy_encoding)
-    print(result)
+    logger.info(str(result))

@@ -1,8 +1,8 @@
-import streamlit as st
-import requests
-from PIL import Image
 from io import BytesIO
-import copy
+
+import requests
+import streamlit as st
+from PIL import Image
 
 # FastAPI backend URL
 BACKEND_URL = "http://localhost:8000"
@@ -12,9 +12,8 @@ def create_session():
     response = requests.post(f"{BACKEND_URL}/api/sessions/create-session")
     if response.status_code == 200:
         return response.json()["session_id"], response.cookies.get("session_id")
-    else:
-        st.error("Failed to create session")
-        return None, None
+    st.error("Failed to create session")
+    return None, None
 
 # Function to upload ID card
 def upload_id(session_id, file):
@@ -23,9 +22,8 @@ def upload_id(session_id, file):
     response = requests.post(f"{BACKEND_URL}/api/id/upload-id", files=files, cookies=cookies)
     if response.status_code == 200:
         return response.json()
-    else:
-        st.error("Failed to upload ID")
-        return None
+    st.error("Failed to upload ID")
+    return None
 
 # Function to capture and compare selfie
 def capture_and_compare(session_id):
@@ -33,9 +31,8 @@ def capture_and_compare(session_id):
     response = requests.post(f"{BACKEND_URL}/api/id/capture-and-compare", cookies=cookies)
     if response.status_code == 200:
         return response.json()
-    else:
-        st.error("Failed to capture and compare")
-        return None
+    st.error("Failed to capture and compare")
+    return None
 
 # Function to verify gesture
 def verify_gesture(session_id):
@@ -43,9 +40,8 @@ def verify_gesture(session_id):
     response = requests.post(f"{BACKEND_URL}/api/id/verify-gesture", cookies=cookies)
     if response.status_code == 200:
         return response.json()
-    else:
-        st.error("Failed to verify gesture")
-        return None
+    st.error("Failed to verify gesture")
+    return None
 
 # Create a session if not already created
 if "session_id" not in st.session_state:
@@ -127,7 +123,7 @@ elif st.session_state.current_step == 1:
         if compare_result:
             st.success("Selfie captured and compared successfully")
             st.write("Comparison Result:", compare_result)
-            del compare_result['id_face_image']
+            del compare_result["id_face_image"]
             st.session_state.important_info["Comparison Result"] = compare_result
             st.session_state.current_step += 1
             st.rerun()
