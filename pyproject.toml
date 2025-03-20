@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "aiofiles>=24.1.0",
     "bentoml>=1.4.5",
     "dlib==19.24.2",
     "easyocr>=1.7.2",
@@ -14,16 +15,23 @@ dependencies = [
     "locust>=2.33.2",
     "loguru>=0.7.3",
     "mediapipe>=0.10.21",
+    "mkdocs-material>=9.6.9",
+    "mkdocs-mermaid2-plugin>=1.2.1",
     "opencv-python>=4.11.0.86",
     "pydantic>=2.10.6",
     "pymupdf>=1.25.3",
     "python-magic>=0.4.27",
     "python-multipart>=0.0.20",
+    "ruff>=0.11.0",
     "streamlit>=1.43.2",
     "torch>=2.6.0",
     "torchvision>=0.21.0",
     "uvicorn>=0.34.0",
 ]
+
+
+[tool.ruff]
+select = ["ALL"] 
 
 
 [tool.uv.sources]
