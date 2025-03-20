@@ -22,18 +22,16 @@ sessions: Dict[str, dict] = {}
 async def create_session(response: Response):
     logger.info("Starting session creation")
     session_id = f"{int(time.time())}-{random.randint(1000, 9999)}"
-    sequence = [random.randint(1, 5) for _ in range(4)]
     sessions[session_id] = {
-        "expected_sequence": sequence,
         "created_at": time.time(),
         "data": {},
     }
 
     # Set the session_id as a cookie
     response.set_cookie(key="session_id", value=session_id, httponly=True)
-    logger.info(f"Session created: {session_id} with sequence {sequence}")
+    logger.info(f"Session created: {session_id}")
 
-    return {"session_id": session_id, "sequence": sequence}
+    return {"session_id": session_id}
 
 
 @router.delete("/cleanup")
