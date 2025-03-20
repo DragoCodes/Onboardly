@@ -11,31 +11,34 @@ setup:
   uv sync
 
 # start fastapi server
-start-backend-server:
+start-backend-server-fastapi:
   uv run uvicorn main:app --reload
+
+# start bentoml server
+start-backend-server-fastapi:
+  cd bentoml && uv run bentoml serve
 
 # NOTE : IGNORE BELOW COMMANDS FOR NOW
 
 # start logging server
 start-logging-server:
-  uv run logging_server.py
+  uv run python -m unified_logging.logging_server
 
 # start frontend server
 start-frontend-server:
-  uv run frontend.py
+  uv run streamlit run website.py
 
 # start all servers (in background with proper logging)
 start-all:
-  @echo "Validating the configuation ..."
-  uv run validate/validate.py
-  @echo "Succesfully Validated the configuration ..."
   @echo "Starting all servers..."
   @echo "Starting logging server..."
-  uv run logging_server.py > logging_server.log 2>&1 &
-  @echo "Starting backend server..."
-  uv run start_server.py > backend_server.log 2>&1 &
+  uv run python -m unified_logging.logging_server > logging_server.log 2>&1 &
+  @echo "Starting backend fastapi server..."
+  uv run uvicorn main:app --reload > backend_server.log 2>&1 &
+  @echo "Starting backend bentoml server..."
+  cd bentoml & uv run bentoml serve > backend_server_bento.log 2>&1 &
   @echo "Starting frontend server..."
-  uv run frontend.py > frontend_server.log 2>&1 &
+  uv run streamlit run website.py > frontend_server.log 2>&1 &
   @echo "All servers started! Check respective log files for details."
   @echo "To stop all servers, use: just stop-all"
 
@@ -53,6 +56,9 @@ stop-all:
 documentation:
   uv run mkdocs serve
 
+# do load testing
+load_testing:
+  uv run locust -f locustfile.py --host=http://127.0.0.1:8000
 
 # run bentoml
 serve_bm:
