@@ -24,7 +24,7 @@ start-logging-server:
 
 # start frontend server
 start-frontend-server:
-  uv run streamlit run website.py
+  uv run streamlit run frontend.py
 
 # start all servers (in background with proper logging)
 start-all:
@@ -36,7 +36,7 @@ start-all:
   @echo "Starting backend bentoml server..."
   cd bentoml && uv run bentoml serve > backend_server_bento.log 2>&1 &
   @echo "Starting frontend server..."
-  uv run streamlit run website.py > frontend_server.log 2>&1 &
+  uv run streamlit run frontend.py > frontend_server.log 2>&1 &
   @echo "All servers started! Check respective log files for details."
   @echo "To stop all servers, use: just stop-all"
 
@@ -47,7 +47,7 @@ stop-all:
   pkill -f "uv run python -m unified_logging.logging_server" || true
   pkill -f "uv run uvicorn main:app" || true
   pkill -f "bentoml serve" || true  # Match the bentoml serve process
-  pkill -f "uv run streamlit run website.py" || true
+  pkill -f "uv run streamlit run frontend.py" || true
   echo "All servers stopped."
 
 # view mkdocs
