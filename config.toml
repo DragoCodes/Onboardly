@@ -1,0 +1,9 @@
+[fastapi]
+host = "127.0.0.1"           # Bind to localhost
+port = 8000                  # Port for FastAPI
+reload = true                # Auto-reload for development
+log_level = "info"           # Logging level for uvicorn
+
+title = "Onboardly API"
+description = "API for ID processing, face comparison, and gesture verification"
+version = "1.0"
