@@ -1,0 +1,62 @@
+set shell := ["bash", "-cu"]
+set dotenv-load
+
+default:
+  just --list
+
+# setup environment and install dependencies
+setup:
+  uv sync
+
+# start fastapi server
+start-backend-server-fastapi:
+  uv run uvicorn main:app --reload
+
+# start bentoml server
+start-backend-server-bentoml:
+  cd bentoml && uv run bentoml serve
+
+
+# start logging server
+start-logging-server:
+  uv run python -m unified_logging.logging_server
+
+# start frontend server
+start-frontend-server:
+  uv run streamlit run frontend.py
+
+# start all servers (in background with proper logging)
+start-all:
+  @echo "Starting all servers..."
+  @echo "Starting logging server..."
+  uv run python -m unified_logging.logging_server > logging_server.log 2>&1 &
+  @echo "Starting backend fastapi server..."
+  uv run uvicorn main:app --reload > backend_server.log 2>&1 &
+  @echo "Starting backend bentoml server..."
+  cd bentoml && uv run bentoml serve > backend_server_bento.log 2>&1 &
+  @echo "Starting frontend server..."
+  uv run streamlit run frontend.py > frontend_server.log 2>&1 &
+  @echo "All servers started! Check respective log files for details."
+  @echo "To stop all servers, use: just stop-all"
+
+# stop all servers
+stop-all:
+  #!/bin/bash
+  echo "Stopping all servers..."
+  pkill -f "uv run python -m unified_logging.logging_server" || true
+  pkill -f "uv run uvicorn main:app" || true
+  pkill -f "bentoml serve" || true  # Match the bentoml serve process
+  pkill -f "uv run streamlit run frontend.py" || true
+  echo "All servers stopped."
+
+# view mkdocs
+documentation:
+  uv run mkdocs serve
+
+# do load testing
+load-testing:
+  uv run locust -f locustfile.py --host=http://127.0.0.1:8000
+
+# run bentoml
+serve-bm:
+  uv run bentoml serve

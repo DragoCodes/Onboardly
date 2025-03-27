@@ -1,0 +1,19 @@
+# config/ocr_service.yaml
+
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file_path: "logs/ocr_service.log"
+
+ocr:
+  languages: ["en"]
+  use_gpu: false
+  extraction:
+    date_pattern: '\b(0[1-9]|1[0-2])/(0[1-9]|[12][0-9]|3[01])/(19|20)\d{2}\b'
+    name_identifiers: ["name"]
+    id_identifiers: ["id", "number", "no."]
+    min_id_digits: 4
+
+paths:
+  uploads: "uploads"
+  processed: "processed_data"

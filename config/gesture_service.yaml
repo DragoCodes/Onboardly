@@ -1,0 +1,9 @@
+gesture:
+  hand:
+    static_image_mode: false
+    max_num_hands: 2
+    min_detection_confidence: 0.5
+  verify_liveness:
+    stable_detection_frames_threshold: 15
+    face_check_frequency: 15
+    max_stored_images: 10

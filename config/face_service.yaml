@@ -1,0 +1,27 @@
+# config/face_service.yaml
+
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file_path: "logs/face_service.log"  # Relative to project root
+
+face:
+  similarity_threshold: 50.0
+  detection_model: hog  # hog/cnn
+  encoding_model: small # small/large
+  
+  image:
+    output_format: JPEG
+    jpeg_quality: 90
+  
+  webcam:
+    camera_index: 0
+    countdown_seconds: 1
+    capture_dir: "uploads/webcam"
+    font_scale: 1.2
+    font_thickness: 2
+    display_time_ms: 1000
+
+paths:
+  uploads: "uploads"
+  models: "models"
