@@ -1,74 +1,97 @@
-# Face Authentication System
+# Onboardly: Intelligent User Onboarding Platform
 
-A biometric verification system that authenticates users through facial recognition, document verification, and liveness checks.
+![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
+![Python](https://img.shields.io/badge/python-3.12+-blue)
+![Backend](https://img.shields.io/badge/Backend-FastAPI-orange)
+![Insights](https://img.shields.io/badge/Insights-BentoML-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-## Overview
+A professional-grade automated user onboarding and retention engine. Onboardly combines high-performance asynchronous web backends with specialized machine learning services (using BentoML) to track user progress, identify friction points in the onboarding lifecycle, and provide personalized coaching and intervention strategies.
 
-This system provides a comprehensive solution for remote user verification, particularly useful for banking operations like account opening and pension verification. It combines:
+## Table of Contents
+- [Tech Stack & Architecture](#tech-stack--architecture)
+- [Prerequisites](#prerequisites)
+- [Installation & Local Setup](#installation--local-setup)
+- [Usage & Running the App](#usage--running-the-app)
+- [Testing](#testing)
+- [Deployment](#deployment)
+- [Contributing Guidelines](#contributing-guidelines)
+- [License and Contact](#license-and-contact)
 
-- Document verification (ID cards, licenses, etc.)
-- Facial recognition
-- Liveness detection through hand gesture verification
+## Tech Stack & Architecture
 
-## Project Structure
+### Core Technologies
+- **App Backends**: `FastAPI` (User registration and API orchestration)
+- **Frontend Dashboard**: `Streamlit` (Interactive admin observability)
+- **Model Intelligence**: `BentoML` (Containerized onboarding prediction models)
+- **Task Orchestration**: `Just` (Command automation)
+- **Observability**: Unified JSON logging across all microservices.
 
-```
-face_auth_system/
-├── .github/
-│   ├── workflows/      # CI/CD (testing & linting)
-│   └── CODEOWNERS
-├── app/
-│   ├── api/            # FastAPI endpoints
-│   │   ├── routers/    # auth_router.py, verification_router.py
-│   │   └── client.py   # API client for service switching
-│   ├── gui/            # Gradio/PyQt UI
-│   │   ├── webcam.py   # Webcam capture logic
-│   │   ├── upload.py   # File upload handlers
-│   │   └── video_analysis.py
-│   ├── processing/     # Core CV logic
-│   │   ├── face/       # face_comparison.py, face_extraction.py
-│   │   ├── ocr/        # document_ocr.py
-│   │   ├── gestures/   # mediapipe_hands.py
-│   │   └── video/      # frame_extraction.py, liveness_check.py
-│   ├── services/       # Model serving
-│   │   ├── bento_service.py
-│   │   ├── fastapi_service.py
-│   │   └── service_base.py  # Abstract base class
-│   ├── core/
-│   │   ├── config.py   # Pydantic settings
-│   │   └── logging.py  # Unified logging setup
-│   └── schemas/        # Pydantic models
-│       ├── auth.py     # Input validation
-│       └── responses.py  # Output formats
-├── configs/
-│   ├── base.yaml       # Common settings
-│   ├── fastapi.yaml    # API-specific config
-│   └── local.yaml      # Local development
-├── data/
-│   ├── raw/            # User uploads
-│   ├── processed/      # Extracted faces/text
-│   └── temp/           # Video recordings
-├── docs/
-│   ├── docs/           # Mkdocs content
-│   └── load_testing/   # Locust results/analysis
-├── load_testing/
-│   └── locustfile.py   # Load test scenarios
-├── logs/               # Rotating log files
-├── models/             # Serialized models
-│   └── bentoml/        # BentoML artifacts
-├── scripts/
-│   ├── setup_env.sh    # Environment setup
-│   └── start_service.sh  # Service launcher
-├── tests/
-│   ├── unit/           # Component tests
-│   └── integration/    # End-to-end flows
-├── .env                # Environment vars
-├── .gitignore
-├── .ruff.toml          # Linting rules
-├── Dockerfile
-├── Justfile            # Task runner
-├── mkdocs.yml          # Documentation config
-├── pyproject.toml      # PEP 621 config
-└── README.md
+### High-Level Architecture
+Onboardly utilizes a modular distributed architecture:
+- **`routers/`**: Decoupled API logic for onboarding steps, authentication, and status tracking.
+- **`services/`**: Central business logic including intervention engines and model wrappers.
+- **`bentoml/`**: Specialized folder for defining, training, and running the BentoML prediction services.
+- **`website.py` / `benfront.py`**: Web-facing application layers for both user and admin interactions.
+
+```mermaid
+graph TD;
+    User[End User]-->FastAPI[FastAPI Onboarding API];
+    FastAPI-->BentoML[BentoML Analysis Service];
+    Admin[Admin Panel]-->Streamlit[Onboarding Observability Console];
+    Streamlit-->FastAPI;
 ```
 
+## Prerequisites
+- **Python**: v3.12+
+- **Tools**: `uv` package manager and `just` (command runner).
+- **Network**: Port 8000 (API), 8501 (UI), and 3000 (BentoML) must be available.
+
+## Installation & Local Setup
+
+```bash
+git clone https://github.com/DragoCodes/Onboardly.git
+cd Onboardly
+uv sync
+```
+
+### Dependency Management
+If not using `uv`:
+```bash
+pip install -r requirements.txt
+```
+
+## Usage & Running the App
+
+### Starting the Platform
+Utilize the built-in `JustFile` command runner:
+```bash
+# Start all microservices concurrently
+just start-app
+```
+Alternatively, manually start the backend:
+```bash
+uv run python website.py
+```
+And launch the administrative console:
+```bash
+uv run streamlit run frontend.py
+```
+
+## Testing
+- **Linter**: `uv run ruff check .`
+- **Load Testing**: `uv run locust -f locustfile.py` (Simulates high-concurrency onboarding flows)
+- **Docs**: `mkdocs serve` (Launches the local technical documentation site).
+
+## Deployment
+Packaged with `BentoML` and defined with a `JustFile`, Onboardly is optimized for containerized deployments. We recommend deploying to AWS ECS or GCP GKE utilizing the included multi-service orchestration blueprints defined in our `mkdocs` documentation.
+
+## Contributing Guidelines
+1. Branch from `main`.
+2. Follow **Trunk-based development**.
+3. Use **Conventional Commits**: `feat: add progressive onboarding roadmap`.
+4. Peer review required; code must pass all `ruff` linting rules.
+
+## License and Contact
+- **License**: MIT
+- **Contact**: DragoCodes (https://github.com/DragoCodes)
